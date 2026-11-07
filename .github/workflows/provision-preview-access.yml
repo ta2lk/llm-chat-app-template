@@ -89,3 +89,4 @@ jobs:
             echo "- Production worker was not changed."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Preview Access application and owner-only policy verified."
+          echo "Access AUD: $aud"
