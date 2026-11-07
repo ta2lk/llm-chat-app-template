@@ -105,6 +105,7 @@ async function searchGitHub(query: string, kind: string, limit: number, env: Env
 }
 
 export async function searchForChat(query: string, env: Env): Promise<{ provider: string; kind?: string; results: SearchResult[]; note?: string }> {
+  query = query.trim().slice(0, 500);
   if (/github|غيت.?هب|مستودع|مهار|skill/i.test(query)) {
     const kind = /مهار|skill/i.test(query) ? "skills" : /كود|code|source|implementation/i.test(query) ? "code" : "repositories";
     const found = await searchGitHub(query, kind, 6, env);
