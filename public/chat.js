@@ -87,9 +87,22 @@ async function sendMessage() {
 			}),
 		});
 
-		// Handle errors
+		// Surface actionable API errors instead of hiding them behind a generic message.
 		if (!response.ok) {
-			throw new Error("Failed to get response");
+			let apiError = "";
+			try {
+				const payload = await response.json();
+				apiError = typeof payload.error === "string" ? payload.error : "";
+			} catch {
+				// The response may not contain JSON.
+			}
+			if (response.status === 401) {
+				throw new Error("تعذر التحقق من تسجيل الدخول عبر Cloudflare Access. إعدادات Access أو جلسة الدخول غير مكتملة.");
+			}
+			if (response.status === 503) {
+				throw new Error(apiError || "الخادم غير مكتمل الإعداد: تحقق من ربط قاعدة البيانات وإعدادات الخدمة.");
+			}
+			throw new Error(apiError || `تعذر تنفيذ الطلب (HTTP ${response.status}).`);
 		}
 		if (!response.body) {
 			throw new Error("Response body is null");
@@ -182,7 +195,7 @@ async function sendMessage() {
 		console.error("Error:", error);
 		addMessageToChat(
 			"assistant",
-			"Sorry, there was an error processing your request.",
+			error instanceof Error ? error.message : "حدث خطأ غير متوقع أثناء معالجة الطلب.",
 		);
 	} finally {
 		// Hide typing indicator
