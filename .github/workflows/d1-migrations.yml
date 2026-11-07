@@ -20,7 +20,7 @@ concurrency:
 jobs:
   migrate:
     name: Apply database migrations only
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out development branch
