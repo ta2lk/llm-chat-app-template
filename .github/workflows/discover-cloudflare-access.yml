@@ -23,30 +23,59 @@ jobs:
           set -euo pipefail
 
           api() {
-            curl --silent --show-error --fail \
+            local url="$1"
+            local response
+            response=$(curl --silent --show-error \
               --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              --header "Content-Type: application/json" "$1"
+              --header "Content-Type: application/json" \
+              --write-out $'\\n%{http_code}' "$url")
+            HTTP_STATUS="${response##*$'\\n'}"
+            API_BODY="${response%$'\\n'*}"
           }
 
-          accounts=$(api "https://api.cloudflare.com/client/v4/accounts")
-          echo "$accounts" | jq -e '.success == true' >/dev/null
-
           echo "## Cloudflare Access discovery" >> "$GITHUB_STEP_SUMMARY"
+
+          api "https://api.cloudflare.com/client/v4/accounts"
+          if [ "$HTTP_STATUS" != "200" ] || ! echo "$API_BODY" | jq -e '.success == true' >/dev/null; then
+            {
+              echo "Could not list Cloudflare accounts."
+              echo "- HTTP status: $HTTP_STATUS"
+              echo "- API response: $(echo "$API_BODY" | jq -c '{success,errors,messages}' 2>/dev/null || echo 'non-JSON response')"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          accounts="$API_BODY"
           echo "Account names and IDs:" >> "$GITHUB_STEP_SUMMARY"
           echo "$accounts" | jq -r '.result[] | "- " + .name + " (ID: " + .id + ")"' >> "$GITHUB_STEP_SUMMARY"
 
+          access_errors=0
           while IFS= read -r account_id; do
             [ -n "$account_id" ] || continue
-            apps=$(api "https://api.cloudflare.com/client/v4/accounts/$account_id/access/apps")
-            org=$(api "https://api.cloudflare.com/client/v4/accounts/$account_id/access/organizations")
-
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Account $account_id" >> "$GITHUB_STEP_SUMMARY"
-            echo "Existing Access applications (name, domain, type, ID):" >> "$GITHUB_STEP_SUMMARY"
-            echo "$apps" | jq -r 'if .success then (.result[]? | "- " + (.name // "unnamed") + " | " + (.domain // "no-domain") + " | " + (.type // "unknown") + " | " + .id) else "API error: " + (.errors|tostring) end' >> "$GITHUB_STEP_SUMMARY"
-            echo "Access team domain:" >> "$GITHUB_STEP_SUMMARY"
-            echo "$org" | jq -r 'if .success then (.result.auth_domain // "not configured") else "API error: " + (.errors|tostring) end' >> "$GITHUB_STEP_SUMMARY"
+
+            api "https://api.cloudflare.com/client/v4/accounts/$account_id/access/apps"
+            echo "#### Access applications (HTTP $HTTP_STATUS)" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HTTP_STATUS" = "200" ] && echo "$API_BODY" | jq -e '.success == true' >/dev/null; then
+              echo "$API_BODY" | jq -r 'if (.result|length) == 0 then "- No Access applications found" else (.result[] | "- " + (.name // "unnamed") + " | " + (.domain // "no-domain") + " | " + (.type // "unknown") + " | " + .id) end' >> "$GITHUB_STEP_SUMMARY"
+            else
+              access_errors=$((access_errors + 1))
+              echo "$API_BODY" | jq -r '"API error: " + ((.errors // .messages // [])|tostring)' >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "API returned a non-JSON error." >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            api "https://api.cloudflare.com/client/v4/accounts/$account_id/access/organizations"
+            echo "#### Access organization (HTTP $HTTP_STATUS)" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HTTP_STATUS" = "200" ] && echo "$API_BODY" | jq -e '.success == true' >/dev/null; then
+              echo "$API_BODY" | jq -r '"Access team domain: " + (.result.auth_domain // "not configured")' >> "$GITHUB_STEP_SUMMARY"
+            else
+              access_errors=$((access_errors + 1))
+              echo "$API_BODY" | jq -r '"API error: " + ((.errors // .messages // [])|tostring)' >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "API returned a non-JSON error." >> "$GITHUB_STEP_SUMMARY"
+            fi
           done < <(echo "$accounts" | jq -r '.result[].id')
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Discovery only: no Access applications, policies, or production settings were changed." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$access_errors" -gt 0 ]; then
+            echo "Access discovery completed with $access_errors API error(s); see endpoint-specific details above." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
