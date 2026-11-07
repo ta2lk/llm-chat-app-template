@@ -1,0 +1,97 @@
+name: Create TA2LK preview D1 database
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-preview-database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create or find isolated preview database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret is missing."
+            exit 1
+          fi
+
+          api() {
+            local method="$1"
+            local url="$2"
+            local payload="${3:-}"
+            local body_file
+            body_file=$(mktemp)
+            if [ -n "$payload" ]; then
+              HTTP_STATUS=$(curl --silent --show-error --request "$method" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Content-Type: application/json" \
+                --data "$payload" --output "$body_file" --write-out '%{http_code}' "$url")
+            else
+              HTTP_STATUS=$(curl --silent --show-error --request "$method" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Content-Type: application/json" \
+                --output "$body_file" --write-out '%{http_code}' "$url")
+            fi
+            API_BODY=$(cat "$body_file")
+            rm -f "$body_file"
+          }
+
+          api GET "https://api.cloudflare.com/client/v4/accounts"
+          if [ "$HTTP_STATUS" != "200" ] || ! printf '%s' "$API_BODY" | jq -e '.success == true' >/dev/null; then
+            echo "::error title=Cloudflare account lookup failed::HTTP $HTTP_STATUS"
+            printf '%s' "$API_BODY" | jq -c '{errors,messages}' || true
+            exit 1
+          fi
+
+          ACCOUNT_COUNT=$(printf '%s' "$API_BODY" | jq '.result | length')
+          if [ "$ACCOUNT_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one accessible Cloudflare account; found $ACCOUNT_COUNT. Refusing to guess."
+            exit 1
+          fi
+          ACCOUNT_ID=$(printf '%s' "$API_BODY" | jq -r '.result[0].id')
+          ACCOUNT_NAME=$(printf '%s' "$API_BODY" | jq -r '.result[0].name')
+
+          DB_NAME="ta2lk-memory-preview"
+          api GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database"
+          if [ "$HTTP_STATUS" != "200" ] || ! printf '%s' "$API_BODY" | jq -e '.success == true' >/dev/null; then
+            echo "::error title=Cloudflare D1 listing failed::HTTP $HTTP_STATUS"
+            printf '%s' "$API_BODY" | jq -c '{errors,messages}' || true
+            exit 1
+          fi
+
+          DB_ID=$(printf '%s' "$API_BODY" | jq -r --arg name "$DB_NAME" '.result[] | select(.name == $name) | .uuid' | head -n 1)
+          if [ -z "$DB_ID" ]; then
+            PAYLOAD=$(jq -cn --arg name "$DB_NAME" '{name:$name,jurisdiction:"eu",primary_location_hint:"eeur",read_replication:{mode:"disabled"}}')
+            api POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database" "$PAYLOAD"
+            if [ "$HTTP_STATUS" != "200" ] || ! printf '%s' "$API_BODY" | jq -e '.success == true' >/dev/null; then
+              echo "::error title=Cloudflare D1 creation failed::HTTP $HTTP_STATUS"
+              printf '%s' "$API_BODY" | jq -c '{errors,messages}' || true
+              exit 1
+            fi
+            DB_ID=$(printf '%s' "$API_BODY" | jq -r '.result.uuid')
+            ACTION="Created"
+          else
+            ACTION="Already existed; reused"
+          fi
+
+          {
+            echo "## TA2LK preview D1 database"
+            echo "- Account: $ACCOUNT_NAME"
+            echo "- Database: $DB_NAME"
+            echo "- Database ID: `$DB_ID`"
+            echo "- Region restriction: EU"
+            echo "- Primary location hint: EEUR"
+            echo "- Read replication: disabled"
+            echo "- Result: $ACTION"
+            echo "- Production database was not modified."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Preview database $ACTION successfully."
