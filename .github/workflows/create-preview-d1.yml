@@ -96,7 +96,7 @@ jobs:
             echo "## TA2LK preview D1 database"
             echo "- Account: $ACCOUNT_NAME"
             echo "- Database: $DB_NAME"
-            echo "- Database ID: `$DB_ID`"
+            echo "- Database ID: $DB_ID"
             echo "- Region restriction: EU"
             echo "- Primary location hint: EEUR"
             echo "- Read replication: disabled"
