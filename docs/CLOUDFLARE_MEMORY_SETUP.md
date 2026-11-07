@@ -29,7 +29,7 @@ Add this block to the top-level of `wrangler.jsonc`, preserving the existing AI 
 
 ## 3. Configure Cloudflare Access for the memory API
 
-Create a Cloudflare Access self-hosted application protecting only the memory endpoint on your app hostname, using the path `/api/memory*`. Configure an allow policy for your own identity.
+Create a Cloudflare Access self-hosted application on your app hostname, using the path `/api/*`. This protects both chat and memory APIs while leaving the static app page accessible. Configure an allow policy for your own identity.
 
 Set these Worker variables in the Cloudflare dashboard (Workers & Pages → your Worker → Settings → Variables):
 
@@ -64,4 +64,4 @@ All endpoints require a valid Cloudflare Access JWT:
 - `POST /api/memory` — save JSON such as `{"fact":"Prefers concise Arabic answers","category":"preferences","confidence":1}`.
 - `DELETE /api/memory?id=<memory-id>` — delete one of the authenticated user's facts.
 
-The API never accepts an owner ID from the client. SQL statements use bound parameters. Memory facts are not automatically inferred from every conversation yet; automatic memory extraction and user review are a later stage.
+The API never accepts an owner ID from the client. SQL statements use bound parameters. Every `/api/chat` request now verifies the same Access identity and loads up to 30 saved facts belonging only to that identity into the model's system context. Memory facts are not automatically inferred from every conversation yet; they must currently be saved through `POST /api/memory`. Automatic memory extraction and user review are a later stage.
