@@ -1,6 +1,11 @@
 name: Create TA2LK preview D1 database
 
 on:
+  push:
+    branches:
+      - feature/ta2lk-agent-foundation
+    paths:
+      - .github/workflows/create-preview-d1.yml
   workflow_dispatch:
 
 permissions:
