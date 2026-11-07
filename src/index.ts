@@ -1,70 +1,191 @@
 /**
- * LLM Chat Application Template
+ * TA2LK AI — Cloudflare Worker API
  *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE).
- *
- * @license MIT
+ * Keeps the original streaming chat route and adds a protected D1 memory API.
+ * Memory access is disabled until D1 and Cloudflare Access are configured.
  */
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
 const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
-
-// Default system prompt
 const SYSTEM_PROMPT =
-	"You are a helpful, friendly assistant. Provide concise and accurate responses.";
+	"You are TA2LK AI, a precise and capable assistant. Be accurate, concise, and state uncertainty. Never claim to have used tools or verified sources unless you actually did.";
+
+type AccessClaims = {
+	sub?: string;
+	email?: string;
+	iss?: string;
+	aud?: string | string[];
+	exp?: number;
+	nbf?: number;
+};
+
+type AccessJwk = JsonWebKey & { kid?: string; use?: string; alg?: string };
+let jwksCache: { expiresAt: number; keys: AccessJwk[] } | null = null;
+
+function json(data: unknown, status = 200): Response {
+	return new Response(JSON.stringify(data), {
+		status,
+		headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+	});
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+	const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+	const binary = atob(padded);
+	return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function getAccessKeys(issuer: string): Promise<AccessJwk[]> {
+	if (jwksCache && jwksCache.expiresAt > Date.now()) return jwksCache.keys;
+	const response = await fetch(`${issuer}/cdn-cgi/access/certs`, {
+		headers: { accept: "application/json" },
+	});
+	if (!response.ok) throw new Error("Unable to retrieve Access signing keys");
+	const payload = (await response.json()) as { keys?: AccessJwk[] };
+	if (!Array.isArray(payload.keys)) throw new Error("Invalid Access signing keys response");
+	jwksCache = { keys: payload.keys, expiresAt: Date.now() + 10 * 60 * 1000 };
+	return payload.keys;
+}
+
+/** Verify the Cloudflare Access JWT signature, issuer, audience and time claims. */
+async function requireAccessIdentity(request: Request, env: Env): Promise<AccessClaims | null> {
+	if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return null;
+	const domain = env.ACCESS_TEAM_DOMAIN.replace(/^https?:\/\//, "").replace(/\/$/, "");
+	const issuer = `https://${domain}`;
+	const token = request.headers.get("Cf-Access-Jwt-Assertion");
+	if (!token) return null;
+	const parts = token.split(".");
+	if (parts.length !== 3) return null;
+
+	try {
+		const header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0]))) as { kid?: string; alg?: string };
+		const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1]))) as AccessClaims;
+		if (!header.kid || header.alg !== "RS256" || claims.iss !== issuer || !claims.sub) return null;
+		const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+		if (!audiences.includes(env.ACCESS_AUD)) return null;
+		const now = Math.floor(Date.now() / 1000);
+		if (!claims.exp || claims.exp <= now || (claims.nbf && claims.nbf > now)) return null;
+
+		const jwk = (await getAccessKeys(issuer)).find((key) => key.kid === header.kid);
+		if (!jwk) return null;
+		const publicKey = await crypto.subtle.importKey(
+			"jwk",
+			jwk,
+			{ name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+			false,
+			["verify"],
+		);
+		const signedData = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+		const signature = decodeBase64Url(parts[2]);
+		const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, signedData);
+		return valid ? claims : null;
+	} catch (error) {
+		console.error("Access JWT verification failed:", error);
+		return null;
+	}
+}
+
+async function handleMemoryRequest(request: Request, env: Env): Promise<Response> {
+	if (!env.DB || !env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) {
+		return json({
+			error: "Memory is not configured yet.",
+			required: ["Create a Cloudflare D1 database", "Add the DB binding", "Configure Cloudflare Access and its AUD value", "Apply migrations"],
+		}, 503);
+	}
+
+	const identity = await requireAccessIdentity(request, env);
+	if (!identity) return json({ error: "Authentication required" }, 401);
+	const ownerId = identity.sub as string;
+
+	if (request.method === "GET") {
+		const result = await env.DB.prepare(
+			"SELECT id, category, fact, confidence, created_at, updated_at FROM memory_facts WHERE owner_id = ? ORDER BY updated_at DESC LIMIT 200",
+		).bind(ownerId).all();
+		return json({ memories: result.results ?? [] });
+	}
+
+	if (request.method === "POST") {
+		const rawLength = Number(request.headers.get("content-length") ?? "0");
+		if (rawLength > 12_000) return json({ error: "Request too large" }, 413);
+		let body: { fact?: unknown; category?: unknown; confidence?: unknown };
+		try {
+			body = await request.json() as typeof body;
+		} catch {
+			return json({ error: "Invalid JSON body" }, 400);
+		}
+		const fact = typeof body.fact === "string" ? body.fact.trim() : "";
+		const category = typeof body.category === "string" ? body.category.trim() : "general";
+		const confidence = typeof body.confidence === "number" ? body.confidence : 1;
+		if (!fact || fact.length > 4000) return json({ error: "Fact must contain 1–4000 characters" }, 400);
+		if (!/^[a-zA-Z0-9_-]{1,40}$/.test(category)) return json({ error: "Invalid category" }, 400);
+		if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+			return json({ error: "Confidence must be between 0 and 1" }, 400);
+		}
+		const id = crypto.randomUUID();
+		await env.DB.prepare(
+			"INSERT INTO memory_facts (id, owner_id, category, fact, confidence) VALUES (?, ?, ?, ?, ?)",
+		).bind(id, ownerId, category, fact, confidence).run();
+		return json({ saved: true, id }, 201);
+	}
+
+	if (request.method === "DELETE") {
+		const id = new URL(request.url).searchParams.get("id");
+		if (!id || id.length > 80) return json({ error: "A valid memory id is required" }, 400);
+		const result = await env.DB.prepare(
+			"DELETE FROM memory_facts WHERE id = ? AND owner_id = ?",
+		).bind(id, ownerId).run();
+		return json({ deleted: (result.meta?.changes ?? 0) > 0 });
+	}
+
+	return json({ error: "Method not allowed" }, 405);
+}
 
 export default {
-	/**
-	 * Main request handler for the Worker
-	 */
-	async fetch(
-		request: Request,
-		env: Env,
-		ctx: ExecutionContext,
-	): Promise<Response> {
+	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle static assets (frontend)
 		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
 			return env.ASSETS.fetch(request);
 		}
 
-		// API Routes
 		if (url.pathname === "/api/chat") {
-			// Handle POST requests for chat
-			if (request.method === "POST") {
-				return handleChatRequest(request, env);
-			}
-
-			// Method not allowed for other request types
-			return new Response("Method not allowed", { status: 405 });
+			if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+			return handleChatRequest(request, env);
 		}
 
-		// Handle 404 for unmatched routes
+		if (url.pathname === "/api/memory") {
+			if (request.method === "OPTIONS") {
+				return new Response(null, { status: 204, headers: { "allow": "GET, POST, DELETE, OPTIONS" } });
+			}
+			return handleMemoryRequest(request, env);
+		}
+
 		return new Response("Not found", { status: 404 });
 	},
 } satisfies ExportedHandler<Env>;
 
-/**
- * Handles chat API requests
- */
-async function handleChatRequest(
-	request: Request,
-	env: Env,
-): Promise<Response> {
+async function handleChatRequest(request: Request, env: Env): Promise<Response> {
 	try {
-		// Parse JSON request body
-		const { messages = [] } = (await request.json()) as {
-			messages: ChatMessage[];
-		};
+		const rawLength = Number(request.headers.get("content-length") ?? "0");
+		if (rawLength > 100_000) return json({ error: "Request too large" }, 413);
+		const body = await request.json() as { messages?: unknown };
+		if (!Array.isArray(body.messages) || body.messages.length > 40) {
+			return json({ error: "messages must be an array containing at most 40 items" }, 400);
+		}
 
-		// Add system prompt if not present
-		if (!messages.some((msg) => msg.role === "system")) {
-			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+		// Never trust a client-supplied system prompt.
+		const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+		for (const item of body.messages) {
+			if (!item || typeof item !== "object") return json({ error: "Invalid message" }, 400);
+			const message = item as { role?: unknown; content?: unknown };
+			if (message.role !== "user" && message.role !== "assistant") {
+				return json({ error: "Only user and assistant messages are accepted" }, 400);
+			}
+			if (typeof message.content !== "string" || message.content.length > 20_000) {
+				return json({ error: "Message content is invalid or too long" }, 400);
+			}
+			messages.push({ role: message.role, content: message.content });
 		}
 
 		const inputs = {
@@ -73,30 +194,17 @@ async function handleChatRequest(
 			stream: true,
 		} satisfies AiTextGenerationInput & { stream: true };
 
-		const stream = await env.AI.run<typeof MODEL_ID>(MODEL_ID, inputs, {
-			// Uncomment to use AI Gateway
-			// gateway: {
-			//   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-			//   skipCache: false,      // Set to true to bypass cache
-			//   cacheTtl: 3600,        // Cache time-to-live in seconds
-			// },
-		});
-
+		const stream = await env.AI.run<typeof MODEL_ID>(MODEL_ID, inputs);
 		return new Response(stream, {
 			headers: {
 				"content-type": "text/event-stream; charset=utf-8",
-				"cache-control": "no-cache",
+				"cache-control": "no-cache, no-transform",
 				connection: "keep-alive",
+				"x-content-type-options": "nosniff",
 			},
 		});
 	} catch (error) {
 		console.error("Error processing chat request:", error);
-		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
-			{
-				status: 500,
-				headers: { "content-type": "application/json" },
-			},
-		);
+		return json({ error: "Failed to process request" }, 500);
 	}
 }
