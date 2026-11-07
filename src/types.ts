@@ -12,6 +12,8 @@ export interface Env {
 	ACCESS_TEAM_DOMAIN?: string;
 	/** Application AUD value from the Cloudflare Access self-hosted application. */
 	ACCESS_AUD?: string;
+	/** Optional GitHub token for authenticated global code search; store as a Worker secret. */
+	GITHUB_TOKEN?: string;
 }
 
 export interface ChatMessage {
