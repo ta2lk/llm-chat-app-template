@@ -24,13 +24,15 @@ jobs:
 
           api() {
             local url="$1"
-            local response
-            response=$(curl --silent --show-error \
+            local body_file
+            body_file=$(mktemp)
+            HTTP_STATUS=$(curl --silent --show-error \
               --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
               --header "Content-Type: application/json" \
-              --write-out $'\\n%{http_code}' "$url")
-            HTTP_STATUS="${response##*$'\\n'}"
-            API_BODY="${response%$'\\n'*}"
+              --output "$body_file" \
+              --write-out '%{http_code}' "$url")
+            API_BODY=$(cat "$body_file")
+            rm -f "$body_file"
           }
 
           echo "## Cloudflare Access discovery" >> "$GITHUB_STEP_SUMMARY"
