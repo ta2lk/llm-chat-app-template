@@ -41,7 +41,7 @@ export function parseDuckDuckGoResults(html: string, limit: number): SearchResul
     if (!/^https?:\/\//i.test(url)) continue;
     let hostname = "";
     try { hostname = new URL(url).hostname; } catch { continue; }
-    if (hostname === "html.duckduckgo.com" || hostname.endsWith(".duckduckgo.com")) continue;
+    if (hostname === "duckduckgo.com" || hostname.endsWith(".duckduckgo.com")) continue;
     const title = cleanText(anchors[i][2]);
     if (!title) continue;
     results.push({ title, url, snippet: cleanText(snippets[i]?.[1] ?? ""), source: hostname });
