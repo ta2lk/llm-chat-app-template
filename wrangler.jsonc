@@ -26,5 +26,18 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	"previews": {
+		"d1_databases": [
+			{
+				"binding": "DB",
+				"database_name": "ta2lk-memory-preview",
+				"database_id": "aca73cf8-11c6-4b6d-a047-127133de23d0",
+				"migrations_dir": "migrations"
+			}
+		],
+		"ai": {
+			"binding": "AI"
+		}
+	},
 	"upload_source_maps": true
 }
