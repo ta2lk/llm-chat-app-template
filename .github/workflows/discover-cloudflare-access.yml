@@ -6,6 +6,8 @@ on:
       - feature/ta2lk-agent-foundation
     paths:
       - .github/workflows/discover-cloudflare-access.yml
+      - src/index.ts
+      - wrangler.jsonc
   workflow_dispatch:
 
 permissions:
