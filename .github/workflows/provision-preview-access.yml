@@ -38,6 +38,7 @@ jobs:
                 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
             fi
             printf '%s' "$response" | jq -e '.success == true' >/dev/null
+            printf '%s' "$response"
           }
           apps=$(api GET "$base/apps")
           app=$(printf '%s' "$apps" | jq -c --arg d "$PREVIEW_DOMAIN" '.result[] | select(.domain == $d)' | head -n1 || true)
