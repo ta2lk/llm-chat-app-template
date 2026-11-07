@@ -143,7 +143,6 @@ describe("protected D1 memory API", () => {
         headers: { "Cf-Access-Jwt-Assertion": ownerToken },
       }),
       env,
-      {} as ExecutionContext,
     );
     expect(readResponse.status).toBe(200);
     const read = await readResponse.json() as { memories: MemoryRow[] };
@@ -156,7 +155,6 @@ describe("protected D1 memory API", () => {
         headers: { "Cf-Access-Jwt-Assertion": otherOwnerToken },
       }),
       env,
-      {} as ExecutionContext,
     );
     const isolated = await isolatedResponse.json() as { memories: MemoryRow[] };
     expect(isolated.memories).toHaveLength(0);
@@ -167,7 +165,6 @@ describe("protected D1 memory API", () => {
         headers: { "Cf-Access-Jwt-Assertion": ownerToken },
       }),
       env,
-      {} as ExecutionContext,
     );
     expect(deleteResponse.status).toBe(200);
     expect((await deleteResponse.json() as { deleted: boolean }).deleted).toBe(true);
