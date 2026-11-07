@@ -14,6 +14,16 @@ export interface Env {
 	ACCESS_AUD?: string;
 	/** Optional GitHub token for authenticated global code search; store as a Worker secret. */
 	GITHUB_TOKEN?: string;
+	/** Primary chat provider; defaults to Cloudflare Workers AI. */
+	MODEL_PROVIDER?: "cloudflare" | "openai-compatible";
+	/** Optional explicit fallback provider. No paid provider is enabled by default. */
+	FALLBACK_MODEL_PROVIDER?: "cloudflare" | "openai-compatible";
+	/** OpenAI-compatible API base URL (HTTPS only), configured as a Worker variable. */
+	OPENAI_BASE_URL?: string;
+	/** OpenAI-compatible API key; configure as a Worker secret, never in source. */
+	OPENAI_API_KEY?: string;
+	/** OpenAI-compatible model identifier. */
+	OPENAI_MODEL?: string;
 }
 
 export interface ChatMessage {
