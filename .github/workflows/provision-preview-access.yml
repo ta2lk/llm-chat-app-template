@@ -1,0 +1,92 @@
+name: Provision TA2LK Preview Access
+# Uses the verified Zero Trust team and owner email to protect Preview only.
+
+on:
+  push:
+    branches:
+      - feature/ta2lk-agent-foundation
+    paths:
+      - .github/workflows/provision-preview-access.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Create or verify the private Preview Access application
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: "9f8f94a477c054de56ed289a9b39bb3f"
+          TEAM_DOMAIN: "hidden-snowflake-5d74.cloudflareaccess.com"
+          PREVIEW_DOMAIN: "*.llm-chat-app-template.muhamad-rasol-allah1.workers.dev"
+          ALLOWED_EMAIL: "muhamad.rasol.allah1@gmail.com"
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/access"
+          api() {
+            local method="$1" url="$2" data="${3:-}"
+            if [ -n "$data" ]; then
+              response=$(curl --silent --show-error --fail-with-body -X "$method" "$url" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" --data "$data")
+            else
+              response=$(curl --silent --show-error --fail-with-body -X "$method" "$url" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+            fi
+            printf '%s' "$response" | jq -e '.success == true' >/dev/null
+            printf '%s' "$response"
+          }
+          apps=$(api GET "$base/apps")
+          app=$(printf '%s' "$apps" | jq -c --arg d "$PREVIEW_DOMAIN" '.result[] | select(.domain == $d)' | head -n1 || true)
+          if [ -z "$app" ]; then
+            payload=$(jq -n --arg domain "$PREVIEW_DOMAIN" --arg email "$ALLOWED_EMAIL" '{
+              name: "TA2LK AI Preview",
+              type: "self_hosted",
+              domain: $domain,
+              session_duration: "24h",
+              policies: [{
+                name: "Allow TA2LK owner only",
+                decision: "allow",
+                precedence: 1,
+                include: [{email: {email: $email}}]
+              }]
+            }')
+            created=$(api POST "$base/apps" "$payload")
+            app=$(printf '%s' "$created" | jq -c '.result')
+          else
+            app_id=$(printf '%s' "$app" | jq -r '.id')
+            policies=$(api GET "$base/apps/$app_id/policies")
+            allowed=$(printf '%s' "$policies" | jq -e --arg email "$ALLOWED_EMAIL" '
+              any(.result[]; .decision == "allow" and any(.include[]?; .email.email? == $email))
+            ' >/dev/null && echo yes || echo no)
+            if [ "$allowed" != "yes" ]; then
+              echo "An app already exists for the Preview domain but its owner-only policy is not verified. Refusing to modify it automatically." >&2
+              exit 1
+            fi
+          fi
+          app_id=$(printf '%s' "$app" | jq -r '.id')
+          aud=$(printf '%s' "$app" | jq -r '.aud // empty')
+          if [ -z "$aud" ]; then
+            details=$(api GET "$base/apps/$app_id")
+            aud=$(printf '%s' "$details" | jq -r '.result.aud // empty')
+          fi
+          if [ -z "$aud" ]; then
+            echo "Application exists but the API did not return its AUD tag." >&2
+            exit 1
+          fi
+          {
+            echo "## TA2LK Preview Access"
+            echo "- Application: TA2LK AI Preview"
+            echo "- Protected host pattern: $PREVIEW_DOMAIN"
+            echo "- Team domain: $TEAM_DOMAIN"
+            echo "- Allowed identity: $ALLOWED_EMAIL"
+            echo "- AUD: $aud"
+            echo "- Production worker was not changed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Preview Access application and owner-only policy verified."
+          echo "Access AUD: $aud"

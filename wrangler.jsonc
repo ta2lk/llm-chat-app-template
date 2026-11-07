@@ -18,5 +18,30 @@
 	"ai": {
 		"binding": "AI"
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ذاكرة ta2lk",
+			"database_id": "e1fc990a-fad2-4ad9-ac6d-8084e61117d6",
+			"migrations_dir": "migrations"
+		}
+	],
+	"previews": {
+		"vars": {
+			"ACCESS_TEAM_DOMAIN": "hidden-snowflake-5d74.cloudflareaccess.com",
+			"ACCESS_AUD": "781b5a199047f3d6553057782440712c8f35701b16a4452ed25fad03b7bb0e11"
+		},
+		"d1_databases": [
+			{
+				"binding": "DB",
+				"database_name": "ta2lk-memory-preview",
+				"database_id": "aca73cf8-11c6-4b6d-a047-127133de23d0",
+				"migrations_dir": "migrations"
+			}
+		],
+		"ai": {
+			"binding": "AI"
+		}
+	},
 	"upload_source_maps": true
 }
