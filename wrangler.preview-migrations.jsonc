@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "d1_databases": [
+    {
+      "binding": "PREVIEW_DB",
+      "database_name": "ta2lk-memory-preview",
+      "database_id": "aca73cf8-11c6-4b6d-a047-127133de23d0",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
