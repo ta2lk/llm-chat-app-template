@@ -5,6 +5,7 @@
  * Memory access is disabled until D1 and Cloudflare Access are configured.
  */
 import { Env, ChatMessage } from "./types";
+import { handleResearchRequest } from "./research";
 
 const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
 const SYSTEM_PROMPT =
@@ -147,6 +148,11 @@ export default {
 
 		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
 			return env.ASSETS.fetch(request);
+		}
+
+		if (url.pathname === "/api/research") {
+			const identity = await requireAccessIdentity(request, env);
+			return handleResearchRequest(request, env, identity);
 		}
 
 		if (url.pathname === "/api/chat") {
