@@ -29,7 +29,7 @@ function json(data: unknown, status = 200): Response {
 	});
 }
 
-function decodeBase64Url(value: string): Uint8Array {
+export function decodeBase64Url(value: string): Uint8Array {
 	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
 	const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
 	const binary = atob(padded);
