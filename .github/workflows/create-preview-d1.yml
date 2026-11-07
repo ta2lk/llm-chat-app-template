@@ -87,6 +87,11 @@ jobs:
             ACTION="Already existed; reused"
           fi
 
+          if [ -z "$DB_ID" ] || [ "$DB_ID" = "null" ]; then
+            echo "::error::Cloudflare did not return a D1 database UUID; refusing to report success."
+            exit 1
+          fi
+
           {
             echo "## TA2LK preview D1 database"
             echo "- Account: $ACCOUNT_NAME"
