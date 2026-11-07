@@ -105,3 +105,4 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "Preview database $ACTION successfully."
+          echo "Preview database ID: $DB_ID"
