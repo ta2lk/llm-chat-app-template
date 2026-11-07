@@ -31,7 +31,7 @@ describe("protected D1 memory API", () => {
       },
       true,
       ["sign", "verify"],
-    );
+    ) as CryptoKeyPair;
     const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
     const jwk = { ...publicJwk, kid: "ta2lk-test-key", alg: "RS256", use: "sig" };
     const teamDomain = "ta2lk-test.cloudflareaccess.com";
@@ -133,7 +133,6 @@ describe("protected D1 memory API", () => {
         body: JSON.stringify({ category: "preference", fact: "Prefers concise Arabic answers" }),
       }),
       env,
-      {} as ExecutionContext,
     );
     expect(saveResponse.status).toBe(201);
     const saved = await saveResponse.json() as { saved: boolean; id: string };
