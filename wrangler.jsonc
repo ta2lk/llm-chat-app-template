@@ -27,6 +27,10 @@
 		}
 	],
 	"previews": {
+		"vars": {
+			"ACCESS_TEAM_DOMAIN": "hidden-snowflake-5d74.cloudflareaccess.com",
+			"ACCESS_AUD": "781b5a199047f3d6553057782440712c8f35701b16a4452ed25fad03b7bb0e11"
+		},
 		"d1_databases": [
 			{
 				"binding": "DB",
