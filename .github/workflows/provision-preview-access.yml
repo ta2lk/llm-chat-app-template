@@ -1,4 +1,5 @@
 name: Provision TA2LK Preview Access
+# Uses the verified Zero Trust team and owner email to protect Preview only.
 
 on:
   push:
