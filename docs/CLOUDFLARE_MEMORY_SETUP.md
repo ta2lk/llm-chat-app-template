@@ -29,7 +29,7 @@ Add this block to the top-level of `wrangler.jsonc`, preserving the existing AI 
 
 ## 3. Configure Cloudflare Access for the memory API
 
-Create a Cloudflare Access self-hosted application on your app hostname, using the path `/api/*`. This protects both chat and memory APIs while leaving the static app page accessible. Configure an allow policy for your own identity.
+Protect the Worker itself with Cloudflare Access: Workers & Pages → select `llm-chat-app-template` → Access → Protect this Worker behind Access. Choose production traffic (and previews only if needed), then create an Allow policy for your own email. Worker-level Access also protects the `workers.dev` hostname and static assets; this is suitable for this private, single-user assistant.
 
 Set these Worker variables in the Cloudflare dashboard (Workers & Pages → your Worker → Settings → Variables):
 
