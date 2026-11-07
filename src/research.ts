@@ -104,6 +104,14 @@ async function searchGitHub(query: string, kind: string, limit: number, env: Env
   };
 }
 
+export async function searchForChat(query: string, env: Env): Promise<{ provider: string; kind?: string; results: SearchResult[]; note?: string }> {
+  if (/github|غيت.?هب|مستودع|مهار|skill/i.test(query)) {
+    const kind = /مهار|skill/i.test(query) ? "skills" : /كود|code|source|implementation/i.test(query) ? "code" : "repositories";
+    const found = await searchGitHub(query, kind, 6, env);
+    return { provider: "github", kind, results: found.results, note: found.note };
+  }
+  return { provider: "web", results: await searchWeb(query, 6) };
+}
 export async function handleResearchRequest(request: Request, env: Env, identity: { sub?: string } | null): Promise<Response> {
   if (!identity?.sub) return json({ error: "Authentication required" }, 401);
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
