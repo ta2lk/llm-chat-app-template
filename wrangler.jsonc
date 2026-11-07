@@ -18,5 +18,13 @@
 	"ai": {
 		"binding": "AI"
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ذاكرة ta2lk",
+			"database_id": "e1fc990a-fad2-4ad9-ac6d-8084e61117d6",
+			"migrations_dir": "migrations"
+		}
+	],
 	"upload_source_maps": true
 }
