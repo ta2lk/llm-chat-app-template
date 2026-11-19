@@ -8,7 +8,7 @@ import { Env, ChatMessage } from "./types";
 const SYSTEM_PROMPT =
   "You are LEX, a precise Arabic-first AI assistant. Answer directly, distinguish facts from estimates, and never invent sources. Use the user's language unless asked otherwise.";
 
-const DEFAULT_CF_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const DEFAULT_CF_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -149,7 +149,7 @@ function providerOrder(env: Env, requested: string): Provider[] {
   if (requested !== "auto" && allowed.includes(requested as Provider)) {
     return [requested as Provider, ...allowed.filter((p) => p !== requested)];
   }
-  const configured = (env.AI_PROVIDER_ORDER || "groq,gemini,cloudflare")
+  const configured = (env.AI_PROVIDER_ORDER || "cloudflare,groq,gemini")
     .split(",")
     .map((p) => p.trim())
     .filter((p): p is Provider => allowed.includes(p as Provider));
