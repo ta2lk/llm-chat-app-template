@@ -116,7 +116,7 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 
         if (provider === "cloudflare") {
           const model = env.CF_MODEL || DEFAULT_CF_MODEL;
-          const stream = await env.AI.run(model, {
+          const stream = await env.AI.run(model as any, {
             messages: promptMessages,
             max_tokens: boundedTokens(body.max_tokens),
             stream: true,
