@@ -7,12 +7,19 @@ This branch adds a provider router to the existing Cloudflare Workers chat app.
 - `GET /api/health`: health and provider availability.
 - `GET /api/providers`: lists configured providers.
 - `POST /api/chat`: streams a chat response.
-- Automatic fallback order defaults to Groq → Gemini → Cloudflare Workers AI.
-- Cloudflare Workers AI remains available without a third-party API key.
+- Default mode is keyless: Cloudflare Workers AI is called through the native Worker AI binding, with no third-party API key.
+- Optional Groq and Gemini providers are used only if you deliberately add their secrets.
+- Default routing order is Cloudflare → Groq → Gemini.
 
-## Configure optional providers
+## Keyless mode (recommended starting point)
 
-From the repository root, authenticate Wrangler and add provider keys as encrypted Worker secrets:
+No external provider key is required. The existing `ai` binding in `wrangler.jsonc` authorizes the Worker to call Workers AI through Cloudflare. Deploying still requires access to your Cloudflare account, but users of the app do not need API keys.
+
+The default model is `@cf/google/gemma-4-26b-a4b-it`, which Cloudflare lists among models available on Workers Free. Model access and quotas can change; check the current catalog and your dashboard.
+
+## Optional providers (not required)
+
+Only if you later want additional providers, authenticate Wrangler and add their keys as encrypted Worker secrets:
 
 ```bash
 npx wrangler login
@@ -59,7 +66,7 @@ curl -N -X POST "https://YOUR-WORKER.workers.dev/api/chat" \
 
 ## Cost and privacy notes
 
-- Cloudflare Workers AI currently includes 10,000 Neurons per day on the Free plan; usage beyond the allocation requires a paid plan. Some models require paid access.
+- Cloudflare Workers AI currently includes 10,000 Neurons per day on the Free plan. When the allowance is exhausted, inference requests stop until reset; this is not unlimited service. Some models require paid access.
 - Gemini's free tier has model-specific quotas and terms; Google states that free-tier content may be used to improve its products. Do not send confidential customer data through that tier.
 - Groq limits vary by model and account; inspect the live Limits page in the Groq console.
 - Free quotas are not unlimited and can change. This design prevents accidental fallback to a paid provider unless you explicitly configure its key and account.
